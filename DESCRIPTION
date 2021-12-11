@@ -1,0 +1,20 @@
+Package: EcommerceFunnelAnalysis
+Title: To analyze funnel metrics from ecommerce data
+Version: 0.1
+Authors@R:
+  person(given = "Gary Nguyen",
+         role = c("aut", "cre"),
+         email = "gary.hnguyen.1107@gmail.com")
+Description: This repo contains codes to analyze funnel metrics from ecommerce data.
+License: MIT + file LICENSE
+Imports:
+  dplyr,
+  tictoc,
+  readr,
+  glue,
+  here
+Encoding: UTF-8
+Language: en-US
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.2

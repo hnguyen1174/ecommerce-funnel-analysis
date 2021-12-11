@@ -1,0 +1,366 @@
+---
+title: "Wayfair CLEAN"
+---
+
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(glue)
+library(here)
+library(janitor)
+library(zoo)
+library(cowplot)
+library(ggthemes)
+```
+
+**SLIDE 2** DATA PROCESSING
+
+```{r customer}
+customer <- readr::read_csv('customer_overall_data.csv') %>% 
+  select(-contains('X')) %>% 
+  clean_names() %>% 
+  mutate(acquisition_date = as.Date(acquisition_date)) %>% 
+  mutate(acquisition_channel = if_else(is.na(acquisition_channel), 'Unknown', acquisition_channel)) %>% 
+  mutate(acquisition_device = if_else(is.na(acquisition_device), 'Unknown', acquisition_device)) %>% 
+  group_by(customer_id) %>% 
+  arrange(acquisition_date) %>% 
+  slice(1) %>% 
+  ungroup()
+```
+
+```{r funnel_data}
+funnel <- readr::read_csv('cust_funnel.csv') %>% 
+  clean_names() %>% 
+  mutate(year_month = as.yearmon(paste0(year, '-', month)))
+```
+
+**SLIDE 4** # CUST BY YEAR
+
+```{r year}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = n, label = n)) +
+  geom_col(color = 'deepskyblue2', fill = 'deepskyblue2') +
+  geom_text(size = 4, vjust = -1, color = 'black') +
+  ggtitle('Number of Customers Acquired by Year') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylim(0, 130)
+
+ggsave('04_cust_by_year.png', p)
+print(p)
+```
+
+**SLIDE 5** # CUST BY ACQUISITION CHANNELS
+
+```{r acquisition_channel}
+p <- customer %>% 
+  group_by(acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = reorder(acquisition_channel, n), y = n, fill = acquisition_channel, label = n)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(hjust = -0.5, size = 4) +
+  ggtitle('Number of Customers by Acquisition Channel') +
+  xlab('Acquisition Channel') +
+  ylab('Number of Customers') +
+  ylim(0, 600) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  theme(text = element_text(size = 14))
+
+ggsave('05_cust_by_acquisition_channel.png', p)
+print(p)
+```
+
+**SLIDE 6**: % CUST BY ACQUISITION CHANNELS, YEAR
+
+```{r acquisition_channel_year_raw}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  mutate(`Acquisition Channel` = acquisition_channel) %>% 
+  ggplot(aes(x = as.integer(acquisition_year), y = n)) +
+  geom_line(aes(color = `Acquisition Channel`), size = 1.5) + 
+  ggtitle('Acquisition Channel by Year and Channel') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  xlim(2003, 2015) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  theme(text=element_text(size=15))
+
+ggsave('06A_cust_by_yearraw.png', p, width = 10, height = 8)
+print(p)
+```
+
+```{r acquisition_channel_year_prct}
+unique_cust_by_year <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year) %>% 
+  tally() %>% 
+  ungroup()
+
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  left_join(unique_cust_by_year, by = 'acquisition_year') %>% 
+  mutate(prct = n.x/n.y,
+         `Acquisition Channel` = acquisition_channel) %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = prct, fill = `Acquisition Channel`, label = ifelse(
+    # acquisition_channel %in% c('Search - Organic', 'Search - Paid'), scales::percent(prct, 1), NA
+    !acquisition_channel %in% c(''), scales::percent(prct, 1), NA
+  ))) +
+  geom_col() +
+  geom_text(position = position_stack(vjust = 0.5), size = 4) + 
+  ggtitle('Percentage of Customers Acquired by Acquisition Channel, by Year') +
+  xlab('Year') +
+  ylab('Percentage of Customers Acquired') +
+  theme_bw() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme(text=element_text(size=15))
+
+ggsave('06B_cust_by_year_prct.png', p, width = 10, height = 8)
+print(p)
+```
+
+**SLIDE 7** # CUST BY ACQUISITION DEVICE
+
+```{r acquisition_device}
+p <- customer %>% 
+  group_by(acquisition_device) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = reorder(acquisition_device, n), y = n, fill = acquisition_device, label = n)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(hjust = -0.5, size = 4) +
+  ggtitle('Number of Customers Acquired by Device') +
+  xlab('Acquisition Device') +
+  ylab('Number of Customers') +
+  ylim(0, 850) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  theme(text = element_text(size = 14))
+
+ggsave('07_cust_by_acquisition_device.png', p)
+print(p)
+```
+
+**SLIDE 8**: # CUST BY DEVICE, YEAR
+
+```{r acquisition_device_year_raw}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_device) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = n, fill = acquisition_device, label = n)) +
+  geom_col() +
+  geom_text(position = position_stack(vjust = 0.5), size = 3) +
+  ggtitle('Acquisition Device by Year') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  theme(text = element_text(size = 14))
+
+ggsave('08_cust_by_device_raw.png', p, width = 10, height = 8)
+print(p)
+```
+
+**SLIDE 11** (Done)
+
+**SLIDE 12** (Done)
+
+**SLIDE 13**
+
+```{r}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_viewed) %>% 
+  group_by(year_month) %>% 
+  summarise(total_views = sum(skus_viewed)) %>% 
+  ggplot(aes(x = year_month, y = total_views)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_bw() +
+  xlab('Month') +
+  ylab('Total SKUs Viewed') +
+  ggtitle('Total SKUs Viewed by Months') +
+  theme(text = element_text(size = 14))
+
+ggsave('13A_total_views_month.png', p, width = 12, height = 6)
+print(p)
+```
+
+```{r skus_viewed}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_viewed, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_viewed, color = class)) +
+  geom_line(size = 1.5) + 
+  theme_bw() +
+  xlab('Month') +
+  ylab('Number of SKU Views') +
+  ggtitle('Number of SKUs Viewed by SKU Class by Months') +
+  theme(text = element_text(size = 14))
+
+ggsave('13_sku_time_analysis_view_by_yearmon.png', p, width = 14, height = 6)
+print(p)
+```
+
+**SLIDE 14**
+
+```{r}
+tmp <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
+  group_by(year_month) %>% 
+  summarise(total_atc = sum(skus_added_to_cart))
+
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
+  group_by(year_month) %>% 
+  summarise(total_atc = sum(skus_added_to_cart)) %>% 
+  ggplot(aes(x = year_month, y = total_atc)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_bw() +
+  xlab('Month') +
+  ylab('Total SKUs Added to Cart') +
+  ggtitle('Total SKUs Added to Cart by Month') +
+  theme(text = element_text(size = 14))
+
+ggsave('14A_total_atc_month.png', p, width = 12, height = 6)
+print(p)
+```
+
+```{r skus_added_to_cart}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_added_to_cart, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_added_to_cart, color = class)) +
+  geom_line(size = 1.5) +
+  theme_bw()  +
+  xlab('Month') +
+  ylab('Number of SKUs Added to Cart') +
+  ggtitle('Number of SKUs Added to Cart by SKU Class and Months') +
+  theme(text = element_text(size = 14))
+
+ggsave('14B_sku_time_analysis_atc_by_yearmon.png', p, width = 14, height = 6)
+print(p)
+```
+
+**SLIDE 15**
+
+```{r}
+tmp <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_purchased) %>% 
+  group_by(year_month) %>% 
+  summarise(total_pur = sum(skus_purchased))
+
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_purchased) %>% 
+  group_by(year_month) %>% 
+  summarise(total_pur = sum(skus_purchased)) %>% 
+  ggplot(aes(x = year_month, y = total_pur)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_bw() +
+  xlab('Month') +
+  ylab('Total SKUs Purchased') +
+  ggtitle('Total SKUs Purchased') +
+  theme(text = element_text(size = 14))
+
+ggsave('15A_total_pur_month.png', p, width = 12, height = 6)
+print(p)
+```
+
+```{r skus_purchased}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_purchased, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_purchased, color = class)) +
+  geom_line(size = 1.5) +
+  theme_bw()  +
+  xlab('Month') +
+  ylab('Number of SKU Purchased') +
+  ggtitle('Number of Items Purchased SKU Class and Months') +
+  theme(text = element_text(size = 14))
+
+ggsave('15B_sku_time_analysis_purchased_by_yearmon.png', p, width = 14, height = 6)
+print(p)
+```
+
+**SLIDE 16**
+
+```{r}
+tmp <- funnel %>% 
+  distinct(year_month, customer_id, class_name, revenue_generated) %>% 
+  group_by(year_month) %>% 
+  summarise(total_atc = sum(revenue_generated))
+
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, revenue_generated) %>% 
+  group_by(year_month) %>% 
+  summarise(total_rev = sum(revenue_generated)) %>% 
+  ggplot(aes(x = year_month, y = total_rev)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_bw() +
+  xlab('Month') +
+  ylab('Total Revenue') +
+  ggtitle('Total Revenue') +
+  theme(text = element_text(size = 14))
+
+ggsave('16A_total_rev_month.png', p, width = 12, height = 6)
+print(p)
+```
+
+```{r revenue_by_time}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = revenue_generated, -year_month) %>% 
+  ggplot(aes(x = year_month, y = revenue_generated, color = class)) +
+  geom_line(size = 1.5) +
+  theme_bw()  +
+  xlab('Month') +
+  ylab('Total Revenue') +
+  ggtitle('Total Revenue by Class and Month') +
+  theme(text = element_text(size = 14))
+
+ggsave('16B_sku_time_analysis_rev_by_yearmon.png', p, width = 14, height = 6)
+print(p)
+```
+
+
+
+
+
