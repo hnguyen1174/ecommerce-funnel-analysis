@@ -1,0 +1,954 @@
+---
+title: "Draft"
+---
+
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(glue)
+library(here)
+library(janitor)
+library(zoo)
+library(cowplot)
+library(ggthemes)
+```
+
+* Data Processing Steps:
+** Change NA values to Unknown
+** Remove duplicate `customer_id`, keeping only earliest `customer_id`.
+
+```{r customer}
+customer <- readr::read_csv('customer_overall_data.csv') %>% 
+  select(-contains('X')) %>% 
+  clean_names() %>% 
+  mutate(acquisition_date = as.Date(acquisition_date)) %>% 
+  mutate(acquisition_channel = if_else(is.na(acquisition_channel), 'Unknown', acquisition_channel)) %>% 
+  mutate(acquisition_device = if_else(is.na(acquisition_device), 'Unknown', acquisition_device)) %>% 
+  group_by(customer_id) %>% 
+  arrange(acquisition_date) %>% 
+  slice(1) %>% 
+  ungroup()
+```
+
+```{r funnel_data}
+funnel <- readr::read_csv('cust_funnel.csv') %>% 
+  clean_names() %>% 
+  mutate(year_month = as.yearmon(paste0(year, '-', month)))
+```
+
+### Customer
+
+#### Without Time
+
+**SLIDE 1**
+* Out of 1,383 customers, we don't know the acquisition channel of 430 (or 31.09%) customers. Among the customers we know the acquisition channel, 532 (38.47%) are from Paid Search, 210 (15.18%) are from Organic Search. Paid Social and Display Acquisition have the fewest customers acquired.
+
+```{r acquisition_channel}
+p <- customer %>% 
+  group_by(acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = reorder(acquisition_channel, n), y = n, fill = acquisition_channel, label = n)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(hjust = -0.5, size = 3) +
+  ggtitle('Number of Customers by Acquisition Channel') +
+  xlab('Acquisition Channel') +
+  ylab('Number of Customers') +
+  ylim(0, 600) +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+ggsave('01_cust_by_acquisition_channel.png', p)
+print(p)
+```
+
+**SLIDE 2**
+* Out of 1,383 customers, we don't know the acquisition device of 766 (or 55.38%) customers. Among the customers we know the acquisition device, 459 (33.18%) customers are from Desktop, 144 (10.41%) customers are from Phone and only 14 (1.01%) are from Tablet.
+
+```{r acquisition_device}
+p <- customer %>% 
+  group_by(acquisition_device) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = reorder(acquisition_device, n), y = n, fill = acquisition_device, label = n)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(hjust = -0.5, size = 3) +
+  ggtitle('Number of Customers Acquired by Device') +
+  xlab('Acquisition Device') +
+  ylab('Number of Customers') +
+  ylim(0, 850) +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+ggsave('02_cust_by_acquisition_device.png', p)
+print(p)
+```
+
+#### By Time
+
+**SLIDE 3**
+
+When plotting new customers by months, there is not a discernible pattern. When looking at new customers by year, we can see that the number of new customers is relatively stable over the year, with a slight decreasing trend. The number peaks in 2012 (with 121 new customers) before dropping to fewer than 100 new customers in the next 3 years. We don't have full-year data for 2002 and 2016, so I won't be able to comment on them.
+
+```{r year_month}
+p <- customer %>% 
+  mutate(acquisition_yearmon = as.yearmon(acquisition_date)) %>% 
+  group_by(acquisition_yearmon) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  ggplot(aes(x = acquisition_yearmon, y = n, color = 'tomato')) +
+  geom_line() +
+  # stat_smooth(aes(x = acquisition_yearmon, y = n), method = 'lm',
+  #             formula = y ~ poly(x, 1), se = FALSE) +
+  ggtitle('Number of Customers Acquired by Months') +
+  xlab('Year-Month') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+ggsave('03A_cust_by_yearmon.png', p)
+print(p)
+```
+
+```{r year_quarter}
+p <- customer %>% 
+  mutate(acquisition_yearqtr = as.yearqtr(acquisition_date)) %>% 
+  group_by(acquisition_yearqtr) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(acquisition_yearqtr) %>% 
+  ggplot(aes(x = acquisition_yearqtr, y = n, color = 'tomato')) +
+  geom_line() +
+  ggtitle('Number of Customers Acquired by Quarters') +
+  xlab('Year-Quarter') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+ggsave('cust_by_yearqtr.png', p)
+print(p)
+```
+
+```{r year}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = n, color = 'tomato', fill = 'tomato', label = n)) +
+  geom_col() +
+  geom_text(size = 3, vjust = -1) +
+  ggtitle('Number of Customers Acquired by Year') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylim(0, 130)
+
+ggsave('03B_cust_by_year.png', p)
+print(p)
+```
+
+##### Channel By Time
+
+**SLIDE 4**
+
+Paid Search and Organic Search are consistently the #1 and #3 channel in terms of new customers. New customers from organic search have been relatively stable, while new customers from paid search has seen a slight decrease in the past few years. This also shows when we look at the percentages of new customers by channel over the year.
+
+```{r acquisition_channel_year_raw}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  mutate(`Acquisition Channel` = acquisition_channel) %>% 
+  ggplot(aes(x = as.integer(acquisition_year), y = n)) +
+  geom_line(aes(color = `Acquisition Channel`)) + 
+  ggtitle('Acquisition Channel by Year and Channel') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw() +
+  xlim(2003, 2015) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  scale_x_continuous(breaks = scales::pretty_breaks())
+
+ggsave('04A_cust_by_yearraw.png', p)
+print(p)
+```
+
+```{r unique_cust_by_year}
+unique_cust_by_year <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year) %>% 
+  tally() %>% 
+  ungroup()
+```
+
+```{r acquisition_channel_year_prct}
+p <- customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_channel) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  left_join(unique_cust_by_year, by = 'acquisition_year') %>% 
+  mutate(prct = n.x/n.y,
+         `Acquisition Channel` = acquisition_channel) %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = prct, fill = `Acquisition Channel`, label = ifelse(
+    # acquisition_channel %in% c('Search - Organic', 'Search - Paid'), scales::percent(prct, 1), NA
+    !acquisition_channel %in% c(''), scales::percent(prct, 1), NA
+  ))) +
+  geom_col() +
+  geom_text(position = position_stack(vjust = 0.5), size = 2) + 
+  ggtitle('Percentage of Customers Acquired by Acquisition Channel, by Year') +
+  xlab('Year') +
+  ylab('Percentage of Customers Acquired') +
+  theme_bw() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))
+
+ggsave('04B_cust_by_year_prct.png', p)
+print(p)
+```
+
+**SLIDE 5**
+
+Number of customers acquired from Desktop and Phone are relatively stable over the year, in both raw number term and percentage term. 
+Acquisition from Table doesn't see any significant increase.
+It is necessary to understand why the majority of cases do not have an acquisition device. Being able to track acquisition device will drive long-term acquisition strategy.
+
+```{r acquisition_device_year_raw}
+customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_device) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = n, fill = acquisition_device, label = n)) +
+  geom_col() +
+  geom_text(position = position_stack(vjust = 0.5), size = 2) +
+  ggtitle('Acquisition Device by Year') +
+  xlab('Year') +
+  ylab('Number of Customers Acquired') +
+  theme_bw()
+```
+
+```{r acquisition_device_year_prct}
+customer %>% 
+  mutate(acquisition_year = year(acquisition_date)) %>% 
+  group_by(acquisition_year, acquisition_device) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  left_join(unique_cust_by_year, by = 'acquisition_year') %>% 
+  mutate(prct = n.x/n.y) %>% 
+  ggplot(aes(x = as.character(acquisition_year), y = prct, fill = acquisition_device, label = ifelse(
+    acquisition_device != '', scales::percent(prct, 1), NA
+  ))) +
+  geom_col() +
+  geom_text(position = position_stack(vjust = 0.5), size = 2.5) + 
+  ggtitle('Percentage of Customers Acquired by Acquisition Device, by Year') +
+  xlab('Year') +
+  ylab('Percentage of Customers Acquired') +
+  theme_bw()
+```
+
+### Funnel Analysis
+
+Assume you were to join the Analytics team and your focus is to utilize customer acquisition, spend and funnel performance data to inform stakeholders on **current status, trends and potential long term engagement strategies** for different customer groups.
+
+#### 2. Funnel Overview
+
+#### By Customers
+
+```{r}
+funnel_cust_by_time <- funnel %>% 
+  group_by(customer_id, year_month) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated),
+            num_skus = n_distinct(class_name)) %>% 
+  ungroup()
+```
+
+```{r}
+cust_full <- funnel %>% 
+  group_by(customer_id) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated),
+            earliest_date = min(year_month),
+            latest_date = max(year_month),
+            num_skus = n_distinct(class_name),
+            num_months = n_distinct(year_month),
+            mean_skus_viewed = skus_viewed/num_months,
+            mean_skus_added_to_cart = skus_added_to_cart/num_months,
+            mean_skus_purchased = skus_purchased/num_months,
+            mean_revenue_generated = revenue_generated/num_months,
+            avg_basket_value = if_else(skus_purchased == 0, 0,  revenue_generated/skus_purchased)) %>% 
+  left_join(customer, by = 'customer_id') %>% 
+  mutate(acquisition_date = as.yearmon(acquisition_date)) %>% 
+  mutate(earliest_date_from_acquisition = (earliest_date - acquisition_date)*12) %>% 
+  mutate(latest_date_from_acquisition = (latest_date - acquisition_date)*12)
+```
+
+```{r cust_full}
+cust_full %>% 
+  filter(!is.na(acquisition_channel)) %>% 
+  group_by(acquisition_channel) %>% 
+  summarize(sum_skus_viewed = sum(skus_viewed),
+            sum_skus_added_to_cart = sum(skus_added_to_cart),
+            sum_skus_purchased = sum(skus_purchased),
+            sum_revenue_generated = sum(revenue_generated),
+            mean_skus_viewed = mean(skus_viewed),
+            mean_skus_added_to_cart = mean(skus_added_to_cart),
+            mean_skus_purchased = mean(skus_purchased),
+            mean_revenue_generated = mean(revenue_generated),
+            num_customers = n_distinct(customer_id)) %>% 
+  ggplot(aes(x = acquisition_channel, y = sum_revenue_generated, fill = acquisition_channel, 
+             label = round(sum_revenue_generated, 2))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.25) 
+# + ylim(0, 100)
+```
+
+```{r}
+cust_full %>% 
+  filter(!is.na(acquisition_device)) %>% 
+  group_by(acquisition_device) %>% 
+  summarize(sum_skus_viewed = sum(skus_viewed),
+            sum_skus_added_to_cart = sum(skus_added_to_cart),
+            sum_skus_purchased = sum(skus_purchased),
+            sum_revenue_generated = sum(revenue_generated),
+            mean_skus_viewed = mean(skus_viewed),
+            mean_skus_added_to_cart = mean(skus_added_to_cart),
+            mean_skus_purchased = mean(skus_purchased),
+            mean_revenue_generated = mean(revenue_generated),
+            num_customers = n_distinct(customer_id)) %>% 
+  ggplot(aes(x = acquisition_device, y = sum_revenue_generated, fill = acquisition_device, 
+             label = round(sum_revenue_generated, 2))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.25) 
+# + ylim(0, 100)
+```
+
+#### By SKU
+
+**SLIDE 6:** SKU Views Per Customer by SKU Class
+
+```{r funnel_summ}
+funnel_summ <- funnel %>% 
+  group_by(class_name) %>% 
+  summarize(sum_skus_viewed = sum(skus_viewed),
+            sum_skus_added_to_cart = sum(skus_added_to_cart),
+            sum_skus_purchased = sum(skus_purchased),
+            sum_revenue_generated = sum(revenue_generated),
+            n_cust = n_distinct(customer_id),
+            skus_viewed_per_cust = sum_skus_viewed/n_cust,
+            skus_added_to_cart_per_cust = sum_skus_added_to_cart/n_cust,
+            skus_purchased_per_cust = sum_skus_purchased/n_cust,
+            revenue_generated_per_cust = sum_revenue_generated/n_cust)
+```
+
+* **Area Rugs** has highest metrics: SKU view per customer, number of customer, SKU added to carts per customer, SKU purchased per customer and revenue generated per customer.
+* **Beds** has very high SKU view per customer (#2), SKU added to carts per customer (#2) but lower purchase per customer (#4) and revenue generated (#4).
+* Similarly, **Bar Stools** has a lot of views (#3), but lower added to cart (#6) and purchase (#6). This suggests potentially quality issue.
+* **Accent Pillows** has very high purchases (#2) despite low view (#9) and a bit lower added to cart (#4). This means customers who views these pillows actually really want to buy them. However, it has lowest revenue.
+* **TV Stands and Entertainment Center** has high revenue per customer (#2) but low purchases and added to cart. We can optimize for revenue by focusing on this item.
+* **Sheets and Sheet Sets** has very high purchases and revenue per customers despite low view and added to cart. This means that there are few people who look for these, but they are satisfied with their purchases.
+
+```{r sku_analysis_view_per_cust}
+p1 <- funnel_summ %>% 
+  ggplot(aes(x = reorder(class_name, skus_viewed_per_cust) , y = skus_viewed_per_cust, fill = class_name,
+             label = round(skus_viewed_per_cust, 1))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('SKU Views Per Customer') +
+  xlab('') +
+  ylim(0, 70) +
+  ggtitle('SKU View per Customer')
+
+ggsave('07A_sku_analysis_view_per_cust.png', p1)
+print(p1)
+```
+
+**SLIDE 7:** SKU Added to Cart Per Customer by SKU Class
+
+```{r sku_analysis_atc_per_cust}
+p2 <- funnel_summ %>% 
+  ggplot(aes(x = reorder(class_name, skus_added_to_cart_per_cust) , y = skus_added_to_cart_per_cust, fill = class_name,
+             label = round(skus_added_to_cart_per_cust, 1))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('SKU Added To Carts Per Customer') +
+  xlab('') +
+  ylim(0, 4.2) +
+  ggtitle('SKU Added to Cart per Customer')
+
+ggsave('07B_sku_analysis_atc_per_cust.png', p2)
+print(p2)
+```
+
+**SLIDE 8:** SKU Purchased Per Customer by SKU Class
+
+```{r sku_analysis_pur_per_cust}
+p3 <- funnel_summ %>% 
+  ggplot(aes(x = reorder(class_name, skus_purchased_per_cust) , y = skus_purchased_per_cust, fill = class_name,
+         label = round(skus_purchased_per_cust, 2))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('SKU Purchased Per Customer') +
+  xlab('') +
+  ylim(0, 0.3)  +
+  ggtitle('SKU Purchased per Customer')
+
+ggsave('08_sku_analysis_pur_per_cust.png', p3)
+print(p3)
+```
+
+**SLIDE 9:** Revenue Generated Per Customer by SKU Class
+
+```{r sku_analysis_rev_per_cust}
+p4 <- funnel_summ %>% 
+  ggplot(aes(x = reorder(class_name, revenue_generated_per_cust) , y = revenue_generated_per_cust, fill = class_name,
+             label = round(revenue_generated_per_cust, 1))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('Revenue Generated Per Customer') +
+  xlab('') +
+  ylim(0, 60) +
+  ggtitle('Revenue Generated Per Customer by SKU Class')
+
+
+ggsave('09_sku_analysis_rev_per_cust.png', p4)
+print(p4)
+```
+
+**SLIDE 10:** Number of Unique Customers by SKU Class
+
+```{r sku_analysis_cust_per_class}
+p5 <- funnel_summ %>% 
+  ggplot(aes(x = reorder(class_name, n_cust) , y = n_cust, fill = class_name,
+             label = round(n_cust, 1))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('Number of Customer') +
+  xlab('') +
+  ylim(0, 800) +
+  ggtitle('Number of Customer per SKU Class')
+
+ggsave('10_sku_analysis_cust_per_class.png', p5)
+print(p5)
+```
+
+**SLIDE 11:** Added to Cart as % of Views, Purchase as % of Added to Cart
+
+```{r}
+p <- funnel_summ %>% 
+  mutate(added_to_cart_conversion = round(sum_skus_added_to_cart/sum_skus_viewed, 4)) %>% 
+  ggplot(aes(x = reorder(class_name, added_to_cart_conversion) , y = added_to_cart_conversion, fill = class_name,
+             label = scales::percent(added_to_cart_conversion, 0.01))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('Added to Cart as a Percentage of Views') +
+  xlab('') +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.14)) +
+  ggtitle('Added to Cart as a Percentage of Views')
+
+ggsave('11_added_to_cart_as_prct_of_views.png', p)
+print(p)
+```
+
+```{r}
+p <- funnel_summ %>% 
+  mutate(purchase_prct = round(sum_skus_purchased/sum_skus_added_to_cart, 4)) %>% 
+  ggplot(aes(x = reorder(class_name, purchase_prct) , y = purchase_prct, fill = class_name,
+             label = scales::percent(purchase_prct, 0.01))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('SKUs Purchases as a Percentage of SKUs Added to Cart') +
+  xlab('') +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.16)) +
+  ggtitle('Purchases as a Percentage of Added to Cart')
+
+ggsave('11B_purchases_as_prct_of_added_to_cart.png', p)
+print(p)
+```
+
+**SLIDE 12:** Purchase as % of View
+
+```{r}
+funnel_summ %>% 
+  mutate(purchase_as_prct_of_view = round(sum_skus_purchased/sum_skus_viewed, 4)) %>% 
+  ggplot(aes(x = reorder(class_name, purchase_as_prct_of_view) , y = purchase_as_prct_of_view, fill = class_name,
+             label = scales::percent(purchase_as_prct_of_view, 0.01))) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('SKUs Purchases as a Percentage of SKUs Views') +
+  xlab('') +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 0.02))
+```
+
+**SLIDE 13:** Average Purchase Size
+
+```{r}
+funnel_summ %>% 
+  mutate(revenue_per_purchase = round(sum_revenue_generated/sum_skus_purchased, 2)) %>% 
+  ggplot(aes(x = reorder(class_name, revenue_per_purchase) , y = revenue_per_purchase, fill = class_name,
+             label = revenue_per_purchase)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(size = 3, hjust = -0.5) +
+  theme_bw() +
+  theme(legend.position = 'none') +
+  ylab('Revenues per Purchase') +
+  xlab('') +
+  ylim(0, 700)
+```
+
+#### By SKU and Time
+
+##### Views
+
+**SLIDE 14:** Number of SKU Views Per Customers By Year
+
+* Total number of views generally decrease over time. The decrease is most pronounced with Rugs, Beds and Bedding Sheets. This is evident when looking at the views per month and views per year.
+
+```{r skus_viewed}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_viewed, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_viewed, color = class)) +
+  geom_line() + 
+  theme_bw() +
+  xlab('Year-Month') +
+  ylab('Number of SKU Views') +
+  ggtitle('Number of Views by SKU Class by Months')
+
+ggsave('sku_time_analysis_view_by_yearmon.png', p)
+print(p)
+```
+
+```{r skus_viewed_year}
+p <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_viewed, -year) %>% 
+  ggplot(aes(x = year, y = skus_viewed, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() +
+  xlab('Year') +
+  ylab('Views') +
+  ggtitle('Number of Views by SKU Class by Year')
+
+ggsave('sku_time_analysis_view_by_year.png', p)
+print(p)
+```
+
+```{r skus_viewed_year_per_cust}
+num_cust <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize(n_cust = n_distinct(customer_id)) %>% 
+  ungroup()
+
+p <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  left_join(num_cust, by = 'year') %>% 
+  mutate_at(vars(-year, -n_cust), funs(. / n_cust)) %>% 
+  select(-n_cust) %>% 
+  gather(key = class, value = skus_viewed, -year) %>% 
+  ggplot(aes(x = year, y = skus_viewed, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() +
+  xlab('Year') +
+  ylab('SKU View Per Customer') +
+  ggtitle('SKU View Per Customer Per Year')
+
+ggsave('sku_time_analysis_view_by_year_per_cust.png', p)
+print(p)
+```
+
+```{r num_cust_by_year}
+p <- num_cust %>% 
+  ggplot(aes(x = year, y = n_cust, fill = 'tomato', label = n_cust)) +
+  geom_col() +
+  geom_text(size = 3, vjust = -1) +
+  theme_bw() +
+  xlab('Year') +
+  ylab('Number of Customers') +
+  theme(legend.position = 'none') +
+  ggtitle('Number of Customers Per Year') +
+  ylim(0, 1100)
+
+ggsave('cust_per_year.png', p)
+print(p)
+```
+
+##### Added to Cart
+
+**SLIDE 15:** Number of SKU Added to Cart Per Customers By Year
+
+* Total number of items added to cart generally decrease over time, similar to SKU views. The decrease is most pronounced with Rugs, Beds and Bedding Sheets. **Wall Art** is the only item that doesn't show too much decline.
+
+```{r skus_added_to_cart}
+p <- funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_added_to_cart, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_added_to_cart, color = class)) +
+  geom_line() +
+  theme_bw()  +
+  xlab('Month') +
+  ylab('Number of SKU Added to Cart') +
+  ggtitle('Number of Items Added to Cart by SKU Class and Months')
+
+ggsave('sku_time_analysis_atc_by_yearmon.png', p)
+print(p)
+```
+
+**CHOSEN**
+
+```{r skus_added_to_cart_year}
+p <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_added_to_cart, -year) %>% 
+  ggplot(aes(x = year, y = skus_added_to_cart, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() + 
+  xlab('Year') +
+  ylab('Items Added to Cart') +
+  ggtitle('Number of Items Added to Cart by SKU Class and Year')
+
+ggsave('sku_time_analysis_atc_by_year.png', p)
+print(p)
+```
+
+```{r skus_added_to_cart_year_per_cust}
+funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  left_join(num_cust, by = 'year') %>% 
+  mutate_at(vars(-year, -n_cust), funs(. / n_cust)) %>% 
+  select(-n_cust) %>% 
+  gather(key = class, value = skus_added_to_cart, -year) %>% 
+  ggplot(aes(x = year, y = skus_added_to_cart, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() + 
+  xlab('Year') +
+  ylab('Items Added to Cart Per Customer') +
+  ggtitle('Number of Items Added to Cart Per Customer by SKU Class and Year')
+
+ggsave('sku_time_analysis_atc_by_year_per_cust.png', p)
+print(p)
+```
+
+##### Purchase
+
+**SLIDE 16:** Number of SKU Purchases Per Customers By Year
+
+```{r skus_purchased}
+funnel %>% 
+  distinct(year_month, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_purchased, -year_month) %>% 
+  ggplot(aes(x = year_month, y = skus_purchased, color = class)) +
+  geom_line()
+```
+
+**CHOSEN**
+
+```{r skus_purchased_year}
+funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = skus_purchased, -year) %>% 
+  ggplot(aes(x = year, y = skus_purchased, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+```{r skus_purchased_year_per_cust}
+funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  left_join(num_cust, by = 'year') %>% 
+  mutate_at(vars(-year, -n_cust), funs(. / n_cust)) %>% 
+  select(-n_cust) %>% 
+  gather(key = class, value = skus_purchased, -year) %>% 
+  ggplot(aes(x = year, y = skus_purchased, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+##### Revenue Generated
+
+**SLIDE 17:** Revenue Generated Per Customers By Year
+
+```{r revenue_generated}
+funnel %>% 
+  distinct(year_month, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year_month) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = revenue_generated, -year_month) %>% 
+  ggplot(aes(x = year_month, y = revenue_generated, color = class)) +
+  geom_line()
+```
+
+**CHOSEN**
+
+```{r revenue_generated_year}
+funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  gather(key = class, value = revenue_generated, -year) %>% 
+  ggplot(aes(x = year, y = revenue_generated, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+```{r skus_purchased_year_per_cust}
+funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup() %>% 
+  left_join(num_cust, by = 'year') %>% 
+  mutate_at(vars(-year, -n_cust), funs(. / n_cust)) %>% 
+  select(-n_cust) %>% 
+  gather(key = class, value = revenue_generated, -year) %>% 
+  ggplot(aes(x = year, y = revenue_generated, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+#### Funnel Analysis
+
+**SLIDE 18:** (Added to Cart / View) %
+
+```{r add_to_cart_from_view}
+view <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+add_to_cart <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+cart_from_view <- as_tibble(as.matrix(add_to_cart)[,-1]/as.matrix(view)[,-1])
+cart_from_view$year <- add_to_cart$year
+
+cart_from_view %>% 
+  gather(key = class, value = cart_from_view, -year) %>% 
+  ggplot(aes(x = year, y = cart_from_view, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+**SLIDE 19:** (Purchase / Added to Cart) %
+
+```{r purchase_from_cart}
+purchase <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+purchase_from_cart <- as_tibble(as.matrix(purchase)[,-1]/as.matrix(add_to_cart)[,-1])
+purchase_from_cart$year <- purchase$year
+
+purchase_from_cart %>% 
+  gather(key = class, value = purchase_from_cart, -year) %>% 
+  ggplot(aes(x = year, y = purchase_from_cart, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+**SLIDE 20:** (Revenue / Purchases) %
+
+```{r dollar_per_purchase}
+revenue <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+revenue_per_purchase <- as_tibble(as.matrix(revenue)[,-1]/as.matrix(purchase)[,-1])
+revenue_per_purchase$year <- revenue$year
+
+revenue_per_purchase %>% 
+  gather(key = class, value = revenue_per_purchase, -year) %>% 
+  ggplot(aes(x = year, y = revenue_per_purchase, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw()
+```
+
+

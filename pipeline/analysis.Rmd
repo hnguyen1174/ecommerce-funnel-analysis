@@ -195,9 +195,12 @@ print(p)
 
 **SLIDE 12** Section Opening - SKU Class Analysis
 
-**SLIDE 13**
+**SLIDE 13** SKU Views and SKU Added to Cart by SKU Class
 
-```{r}
+
+**SLIDE 15** Total SKU Views by Months
+
+```{r fig.width = 6, fig.height = 3}
 p <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_viewed) %>% 
   group_by(year_month) %>% 
@@ -210,11 +213,11 @@ p <- funnel %>%
   ggtitle('Total SKUs Viewed by Months') +
   theme(text = element_text(size = 14))
 
-ggsave('13A_total_views_month.png', p, width = 12, height = 6)
+save_fig(p, '15A_total_views_month', width = 12, height = 6)
 print(p)
 ```
 
-```{r skus_viewed}
+```{r skus_viewed, fig.width = 8, fig.height = 3}
 p <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_viewed) %>% 
   spread(key = class_name, value = skus_viewed) %>% 
@@ -231,13 +234,13 @@ p <- funnel %>%
   ggtitle('Number of SKUs Viewed by SKU Class by Months') +
   theme(text = element_text(size = 14))
 
-ggsave('13_sku_time_analysis_view_by_yearmon.png', p, width = 14, height = 6)
+save_fig(p, '15B_sku_time_analysis_view_by_yearmon.png', width = 14, height = 6)
 print(p)
 ```
 
-**SLIDE 14**
+**SLIDE 16** Total SKU Added to Cart by Months
 
-```{r}
+```{r fig.width = 6, fig.height = 3}
 tmp <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
   group_by(year_month) %>% 
@@ -255,11 +258,11 @@ p <- funnel %>%
   ggtitle('Total SKUs Added to Cart by Month') +
   theme(text = element_text(size = 14))
 
-ggsave('14A_total_atc_month.png', p, width = 12, height = 6)
+save_fig(p, '16A_total_atc_month', width = 12, height = 6)
 print(p)
 ```
 
-```{r skus_added_to_cart}
+```{r skus_added_to_cart, fig.width = 8, fig.height = 3}
 p <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_added_to_cart) %>% 
   spread(key = class_name, value = skus_added_to_cart) %>% 
@@ -276,13 +279,13 @@ p <- funnel %>%
   ggtitle('Number of SKUs Added to Cart by SKU Class and Months') +
   theme(text = element_text(size = 14))
 
-ggsave('14B_sku_time_analysis_atc_by_yearmon.png', p, width = 14, height = 6)
+save_fig(p, '16B_sku_time_analysis_atc_by_yearmon.png', width = 14, height = 6)
 print(p)
 ```
 
-**SLIDE 15**
+**SLIDE 17** Total SKU Purchased by Months
 
-```{r}
+```{r fig.width = 6, fig.height = 3}
 tmp <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_purchased) %>% 
   group_by(year_month) %>% 
@@ -300,11 +303,11 @@ p <- funnel %>%
   ggtitle('Total SKUs Purchased') +
   theme(text = element_text(size = 14))
 
-ggsave('15A_total_pur_month.png', p, width = 12, height = 6)
+save_fig(p, '17A_total_pur_month.png', width = 12, height = 6)
 print(p)
 ```
 
-```{r skus_purchased}
+```{r skus_purchased, fig.width = 8, fig.height = 3}
 p <- funnel %>% 
   distinct(year_month, customer_id, class_name, skus_purchased) %>% 
   spread(key = class_name, value = skus_purchased) %>% 
@@ -321,9 +324,11 @@ p <- funnel %>%
   ggtitle('Number of Items Purchased SKU Class and Months') +
   theme(text = element_text(size = 14))
 
-ggsave('15B_sku_time_analysis_purchased_by_yearmon.png', p, width = 14, height = 6)
+save_fig(p, '17B_sku_time_analysis_purchased_by_yearmon.png', width = 14, height = 6)
 print(p)
 ```
+
+
 
 **SLIDE 16**
 
