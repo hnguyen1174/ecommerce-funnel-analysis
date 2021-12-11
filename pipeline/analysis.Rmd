@@ -1,5 +1,5 @@
 ---
-title: "Wayfair CLEAN"
+title: "Analysis"
 ---
 
 ```{r libraries}
@@ -11,12 +11,16 @@ library(janitor)
 library(zoo)
 library(cowplot)
 library(ggthemes)
+
+devtools::load_all()
 ```
 
-**SLIDE 2** DATA PROCESSING
+**SLIDE 1** Opening Slide
+
+**SLIDE 2** Data Processing
 
 ```{r customer}
-customer <- readr::read_csv('customer_overall_data.csv') %>% 
+customer <- readr::read_csv(file.path(here::here(), 'data/customer_overall_data.csv')) %>% 
   select(-contains('X')) %>% 
   clean_names() %>% 
   mutate(acquisition_date = as.Date(acquisition_date)) %>% 
@@ -29,12 +33,18 @@ customer <- readr::read_csv('customer_overall_data.csv') %>%
 ```
 
 ```{r funnel_data}
-funnel <- readr::read_csv('cust_funnel.csv') %>% 
+funnel <- readr::read_csv(file.path(here::here(), 'data/cust_funnel.csv')) %>% 
   clean_names() %>% 
   mutate(year_month = as.yearmon(paste0(year, '-', month)))
 ```
 
-**SLIDE 4** # CUST BY YEAR
+**SLIDE 3** Data Processing Steps
+
+**SLIDE 4** Outline
+
+**SLIDE 5** Section Opening - Customer acquisition analysis
+
+**SLIDE 6** Number of unique customers by year
 
 ```{r year}
 p <- customer %>% 
@@ -52,11 +62,11 @@ p <- customer %>%
   theme(legend.position = 'none') +
   ylim(0, 130)
 
-ggsave('04_cust_by_year.png', p)
+save_fig(p, '06_cust_by_year')
 print(p)
 ```
 
-**SLIDE 5** # CUST BY ACQUISITION CHANNELS
+**SLIDE 7** Number of customers acquired by channels
 
 ```{r acquisition_channel}
 p <- customer %>% 
@@ -76,13 +86,13 @@ p <- customer %>%
   theme(legend.position = 'none') +
   theme(text = element_text(size = 14))
 
-ggsave('05_cust_by_acquisition_channel.png', p)
+save_fig(p, '07_cust_by_acquisition_channel')
 print(p)
 ```
 
-**SLIDE 6**: % CUST BY ACQUISITION CHANNELS, YEAR
+**SLIDE 8**: Number of customers acquired by channels and years
 
-```{r acquisition_channel_year_raw}
+```{r acquisition_channel_year_raw, fig.width=6, fig.height=4}
 p <- customer %>% 
   mutate(acquisition_year = year(acquisition_date)) %>% 
   group_by(acquisition_year, acquisition_channel) %>% 
@@ -100,11 +110,11 @@ p <- customer %>%
   scale_x_continuous(breaks = scales::pretty_breaks()) +
   theme(text=element_text(size=15))
 
-ggsave('06A_cust_by_yearraw.png', p, width = 10, height = 8)
+save_fig(p, '08A_cust_by_yearraw', width = 10, height = 8)
 print(p)
 ```
 
-```{r acquisition_channel_year_prct}
+```{r acquisition_channel_year_prct, fig.width=6, fig.height=4}
 unique_cust_by_year <- customer %>% 
   mutate(acquisition_year = year(acquisition_date)) %>% 
   group_by(acquisition_year) %>% 
@@ -132,11 +142,11 @@ p <- customer %>%
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   theme(text=element_text(size=15))
 
-ggsave('06B_cust_by_year_prct.png', p, width = 10, height = 8)
+save_fig(p, '08B_cust_by_year_prct', width = 10, height = 8)
 print(p)
 ```
 
-**SLIDE 7** # CUST BY ACQUISITION DEVICE
+**SLIDE 9** Number of customers acquired by device
 
 ```{r acquisition_device}
 p <- customer %>% 
@@ -156,13 +166,13 @@ p <- customer %>%
   theme(legend.position = 'none') +
   theme(text = element_text(size = 14))
 
-ggsave('07_cust_by_acquisition_device.png', p)
+save_fig(p, '09_cust_by_acquisition_device')
 print(p)
 ```
 
-**SLIDE 8**: # CUST BY DEVICE, YEAR
+**SLIDE 10**: Number of customers acquired by device and years
 
-```{r acquisition_device_year_raw}
+```{r acquisition_device_year_raw, fig.width=6, fig.height=4}
 p <- customer %>% 
   mutate(acquisition_year = year(acquisition_date)) %>% 
   group_by(acquisition_year, acquisition_device) %>% 
@@ -177,13 +187,13 @@ p <- customer %>%
   theme_bw() +
   theme(text = element_text(size = 14))
 
-ggsave('08_cust_by_device_raw.png', p, width = 10, height = 8)
+save_fig(p, '10_cust_by_device_raw', width = 10, height = 8)
 print(p)
 ```
 
-**SLIDE 11** (Done)
+**SLIDE 11**: Summary and Recommendations
 
-**SLIDE 12** (Done)
+**SLIDE 12** Section Opening - SKU Class Analysis
 
 **SLIDE 13**
 
