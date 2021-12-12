@@ -197,6 +197,7 @@ print(p)
 
 **SLIDE 13** SKU Views and SKU Added to Cart by SKU Class
 
+**SLIDE 14** SKU Purchases and Revenue by SKU Class
 
 **SLIDE 15** Total SKU Views by Months
 
@@ -328,11 +329,9 @@ save_fig(p, '17B_sku_time_analysis_purchased_by_yearmon.png', width = 14, height
 print(p)
 ```
 
+**SLIDE 18** Revenue by Months
 
-
-**SLIDE 16**
-
-```{r}
+```{r fig.width = 6, fig.height = 3}
 tmp <- funnel %>% 
   distinct(year_month, customer_id, class_name, revenue_generated) %>% 
   group_by(year_month) %>% 
@@ -350,11 +349,11 @@ p <- funnel %>%
   ggtitle('Total Revenue') +
   theme(text = element_text(size = 14))
 
-ggsave('16A_total_rev_month.png', p, width = 12, height = 6)
+save_fig(p, '18A_total_rev_month.png', width = 12, height = 6)
 print(p)
 ```
 
-```{r revenue_by_time}
+```{r revenue_by_time, fig.width = 8, fig.height = 3}
 p <- funnel %>% 
   distinct(year_month, customer_id, class_name, revenue_generated) %>% 
   spread(key = class_name, value = revenue_generated) %>% 
@@ -371,10 +370,209 @@ p <- funnel %>%
   ggtitle('Total Revenue by Class and Month') +
   theme(text = element_text(size = 14))
 
-ggsave('16B_sku_time_analysis_rev_by_yearmon.png', p, width = 14, height = 6)
+save_fig(p, '18B_sku_time_analysis_rev_by_yearmon.png', width = 14, height = 6)
 print(p)
 ```
 
+**SLIDE 19** Section Summary and Recommendations
+
+**SLIDE 20** Section Summary and Recommendations (Cont.)
+
+**SLIDE 21** Section Opening - Funnel Analysis
+
+**SLIDE 22**
+
+**SLIDE 23**
+
+**SLIDE 24:** View-to-Cart Ratio (Added to Cart / View) % by Months
+
+```{r add_to_cart_from_view_all}
+p <- funnel %>% 
+  group_by(year_month) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  ungroup() %>% 
+  distinct(year_month, skus_viewed, skus_added_to_cart) %>% 
+  mutate(view_to_cart = skus_added_to_cart/skus_viewed) %>% 
+  ggplot(aes(x = year_month, y = view_to_cart)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_hc() +
+  xlab('Month') +
+  ylab('View to Cart %') +
+  ggtitle('Added to Cart As % of Views by Months') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '24_view_to_cart_by_months_all.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 25:** View-to-Cart Ratio (Added to Cart / View) % by Class and Years
+
+```{r add_to_cart_from_view}
+view <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_viewed) %>% 
+  spread(key = class_name, value = skus_viewed) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+add_to_cart <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_added_to_cart) %>% 
+  spread(key = class_name, value = skus_added_to_cart) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+cart_from_view <- as_tibble(as.matrix(add_to_cart)[,-1]/as.matrix(view)[,-1])
+cart_from_view$year <- add_to_cart$year
+
+p <- cart_from_view %>% 
+  gather(key = class, value = cart_from_view, -year) %>% 
+  ggplot(aes(x = year, y = cart_from_view, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() +
+  xlab('Year') +
+  ylab('View to Cart %') +
+  ggtitle('Added to Cart As % of Views by Years') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '25_view_to_cart_by_years.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 26:** Cart-to-Purchase Ratio (Purchase / Added to Cart) % by Months
+
+```{r cart_to_purchase_all}
+p <- funnel %>% 
+  group_by(year_month) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  ungroup() %>% 
+  distinct(year_month, skus_added_to_cart, skus_purchased) %>% 
+  mutate(cart_to_purchase = skus_purchased/skus_added_to_cart) %>% 
+  ggplot(aes(x = year_month, y = cart_to_purchase)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_hc() +
+  xlab('Month') +
+  ylab('Cart to Purchase %') +
+  ggtitle('Purchase As % of Added to Cart by Months') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '26_cart_to_purchase_by_months_all.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 27:** Cart-to-Purchase Ratio (Purchase / Added to Cart) % by Class and Years
+
+```{r cart_to_purchase}
+purchase <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, skus_purchased) %>% 
+  spread(key = class_name, value = skus_purchased) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+purchase_from_cart <- as_tibble(as.matrix(purchase)[,-1]/as.matrix(add_to_cart)[,-1])
+purchase_from_cart$year <- purchase$year
+
+p <- purchase_from_cart %>% 
+  gather(key = class, value = purchase_from_cart, -year) %>% 
+  ggplot(aes(x = year, y = purchase_from_cart, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() +
+  xlab('Year') +
+  ylab('Cart to Purchase %') +
+  ggtitle('Purchase As % of Added to Cart by Years') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '27_cart_to_purchase_by_years.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 28:** (Revenue / Purchases) by Months
+
+```{r revenue_per_order_all}
+p <- funnel %>% 
+  group_by(year_month) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  ungroup() %>% 
+  distinct(year_month, skus_purchased, revenue_generated) %>% 
+  mutate(revenue_per_order = revenue_generated/skus_purchased) %>% 
+  ggplot(aes(x = year_month, y = revenue_per_order)) +
+  geom_line(size = 1.5, color = 'deepskyblue2') + 
+  theme_hc() +
+  xlab('Month') +
+  ylab('Revenue per Order') +
+  ggtitle('Revenue per Order by Months') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '28_revenue_per_order_by_months_all.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 29:** Revenue per Order by Class and Years
+
+```{r revenue_per_order}
+revenue <- funnel %>% 
+  mutate(year = year(year_month)) %>% 
+  group_by(year, customer_id, class_name) %>% 
+  summarize(skus_viewed = sum(skus_viewed),
+            skus_added_to_cart = sum(skus_added_to_cart),
+            skus_purchased = sum(skus_purchased),
+            revenue_generated = sum(revenue_generated)) %>% 
+  distinct(year, customer_id, class_name, revenue_generated) %>% 
+  spread(key = class_name, value = revenue_generated) %>% 
+  mutate_all(replace_na, 0) %>% 
+  group_by(year) %>% 
+  summarize_at(vars(-customer_id), sum) %>% 
+  ungroup()
+
+revenue_per_purchase <- as_tibble(as.matrix(revenue)[,-1]/as.matrix(purchase)[,-1])
+revenue_per_purchase$year <- revenue$year
+
+p <- revenue_per_purchase %>% 
+  gather(key = class, value = revenue_per_purchase, -year) %>% 
+  ggplot(aes(x = year, y = revenue_per_purchase, fill = class)) +
+  geom_col(position = 'dodge') +
+  theme_bw() +
+  xlab('Year') +
+  ylab('Revenue per Order') +
+  ggtitle('Revenue per Order by Years') +
+  theme(text = element_text(size = 14))
+
+save_fig(p, '29_revenue_per_order_by_years.png', width = 12, height = 6)
+print(p)
+```
+
+**SLIDE 30** Section Summary and Recommendations
 
 
 
